@@ -6,7 +6,7 @@ $db   = $config['db'];
 $user = $config['user'];
 $pass = $config['pass'];
 $dsn  = "mysql:host=$host;dbname=$db;charset=utf8mb4";
-$current_version = '0.0.8';
+$current_version = '0.0.1';
 
 function autoUpdateFromGit($current_version) {
     $update_json_url = 'https://raw.githubusercontent.com/13-GG/logs-update/main/logs_update.json';
