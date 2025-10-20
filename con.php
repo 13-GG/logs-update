@@ -1,57 +1,58 @@
 <?php
-$current_version = '0.0.7';
+$config = include __DIR__ . '/config.php';
 
-function checkForUpdates($current_version) {
-    $update_file_url = 'https://raw.githubusercontent.com/13-GG/logs-update/main/logs_update.json';
-    $lock_file = sys_get_temp_dir() . '/update_check.lock';
-    
-    if (file_exists($lock_file)) {
-        $last_check = filemtime($lock_file);
-        if (time() - $last_check < 300) {
-            return ['update_available' => false, 'reason' => 'recently_checked'];
-        }
-    }
-    
-    touch($lock_file);
-    
+$host = $config['host'];
+$db   = $config['db'];
+$user = $config['user'];
+$pass = $config['pass'];
+$dsn  = "mysql:host=$host;dbname=$db;charset=utf8mb4";
+$current_version = '0.0.1';
+
+function autoUpdateFromGit($current_version) {
+    $update_json_url = 'https://raw.githubusercontent.com/13-GG/logs-update/main/logs_update.json';
+
     try {
         $context = stream_context_create([
             'http' => ['timeout' => 10, 'user_agent' => 'auto-update/1.0'],
             'ssl' => ['verify_peer' => false, 'verify_peer_name' => false]
         ]);
-        
-        $update_info = file_get_contents($update_file_url, false, $context);
-        $update_data = json_decode($update_info, true);
-        
-        if (!$update_data || !isset($update_data['LOGS_VERSION'])) {
-            return ['update_available' => false, 'reason' => 'invalid_data'];
+
+        $json_data = file_get_contents($update_json_url, false, $context);
+        if (!$json_data) {
+            throw new Exception('Не удалось получить данные обновления');
         }
-        
-        $new_version = $update_data['LOGS_VERSION'];
-        
+
+        $update_info = json_decode($json_data, true);
+        if (!isset($update_info['LOGS_VERSION'], $update_info['UPDATE_URL'])) {
+            throw new Exception('Некорректные данные обновления');
+        }
+
+        $new_version = $update_info['LOGS_VERSION'];
+        $update_url  = $update_info['UPDATE_URL'];
+
         if (version_compare($new_version, $current_version, '>')) {
-            $new_file_content = file_get_contents($update_data['UPDATE_URL'], false, $context);
-            
-            if ($new_file_content) {
-                $backup_file = __DIR__ . '/con_backup_' . date('Y-m-d_H-i-s') . '.php';
-                copy(__FILE__, $backup_file);
-                
-                if (file_put_contents(__FILE__, $new_file_content) !== false) {
-                    file_put_contents(
-                        __DIR__ . '/update_log.txt',
-                        date('Y-m-d H:i:s') . " - Updated from $current_version to $new_version\n",
-                        FILE_APPEND
-                    );
-                    return [
-                        'update_available' => true,
-                        'updated' => true,
-                        'old_version' => $current_version,
-                        'new_version' => $new_version
-                    ];
-                }
+            $raw_file_url = convertToRawGitURL($update_url);
+            $new_file_content = file_get_contents($raw_file_url, false, $context);
+
+            if (!$new_file_content) {
+                throw new Exception('Не удалось скачать новый файл');
             }
+
+            $backup_file = __DIR__ . '/backups//backup_' . date('Y-m-d_H-i-s') . '.php';
+            copy(__FILE__, $backup_file);
+
+            if (file_put_contents(__FILE__, $new_file_content) === false) {
+                throw new Exception('Не удалось записать новый файл');
+            }
+
+            return [
+                'update_available' => true,
+                'updated' => true,
+                'old_version' => $current_version,
+                'new_version' => $new_version
+            ];
         }
-        
+
         return [
             'update_available' => false,
             'reason' => 'up_to_date',
@@ -61,23 +62,19 @@ function checkForUpdates($current_version) {
     } catch (Exception $e) {
         file_put_contents(
             __DIR__ . '/update_errors.txt',
-            date('Y-m-d H:i:s') . " - Update error: " . $e->getMessage() . "\n",
+            date('Y-m-d H:i:s') . " - Ошибка обновления: " . $e->getMessage() . "\n",
             FILE_APPEND
         );
         return ['update_available' => false, 'reason' => 'error', 'error' => $e->getMessage()];
     }
 }
 
-if (isset($_GET['check_update']) && $_GET['check_update'] === 'true') {
-    $result = checkForUpdates($current_version);
-    header('Content-Type: application/json');
-    echo json_encode($result);
-    exit;
+function convertToRawGitURL($url) {
+    $url = str_replace('https://github.com/', 'https://raw.githubusercontent.com/', $url);
+    $url = str_replace('/blob/', '/', $url);
+    return $url;
 }
-
-if (mt_rand(1, 10) === 1) {
-    checkForUpdates($current_version);
-}
+$result = autoUpdateFromGit($current_version);
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -136,13 +133,6 @@ file_put_contents($lock_file, json_encode($current_data), LOCK_EX);
 usleep(100000);
 set_time_limit(5);
 ini_set('memory_limit', '32M');
-
-// DB connection
-$host = "127.0.0.1";
-$db   = "localhost";
-$user = "localhost";
-$pass = "test";
-$dsn  = "mysql:host=$host;dbname=$db;charset=utf8mb4";
 
 try {
     $pdo = new PDO($dsn, $user, $pass, [
@@ -367,6 +357,7 @@ try {
     );
 
     echo json_encode([
+        'version' => $current_version,
         'current_week' => $currentWeek,
         'last_week' => $lastWeek
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
