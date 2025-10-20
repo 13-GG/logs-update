@@ -1,5 +1,5 @@
 {
-  "LOGS_VERSION": "0.0.1",
+  "LOGS_VERSION": "0.0.8",
   "UPDATE_URL": "https://raw.githubusercontent.com/13-GG/logs-update/main/con.php",
   "CHANGES": "Исправлены функции, добавлены новые баги123"
 }
