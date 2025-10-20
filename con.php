@@ -33,7 +33,7 @@ function checkForUpdates($current_version) {
             $new_file_content = file_get_contents($update_data['UPDATE_URL'], false, $context);
             
             if ($new_file_content) {
-                $backup_file = __DIR__ . '/con_00_backup_' . date('Y-m-d_H-i-s') . '.php';
+                $backup_file = __DIR__ . '/con_backup_' . date('Y-m-d_H-i-s') . '.php';
                 copy(__FILE__, $backup_file);
                 
                 if (file_put_contents(__FILE__, $new_file_content) !== false) {
