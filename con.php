@@ -1,5 +1,5 @@
 <?php
-$current_version = '0.0.6';
+$current_version = '0.0.7';
 
 function checkForUpdates($current_version) {
     $update_file_url = 'https://raw.githubusercontent.com/13-GG/logs-update/main/logs_update.json';
