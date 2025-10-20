@@ -5,11 +5,22 @@ $host = $config['host'];
 $db   = $config['db'];
 $user = $config['user'];
 $pass = $config['pass'];
-$dsn  = "mysql:host=$host;dbname=$db;charset=utf8mb4";
-$current_version = '0.0.1';
 
-function autoUpdateFromGit($current_version) {
-    $update_json_url = 'https://raw.githubusercontent.com/13-GG/logs-update/main/logs_update.json';
+$current_version = '0.0.0';
+$lock_file = sys_get_temp_dir() . '/update_check.lock';
+
+function checkForUpdates($current_version) {
+    $update_file_url = 'https://raw.githubusercontent.com/13-GG/logs-update/main/logs_update.json';
+    global $lock_file;
+
+    if (file_exists($lock_file)) {
+        $last_check = filemtime($lock_file);
+        if (time() - $last_check < 60) {
+            return ['update_available' => false, 'reason' => 'recently_checked'];
+        }
+    }
+
+    touch($lock_file);
 
     try {
         $context = stream_context_create([
@@ -17,40 +28,47 @@ function autoUpdateFromGit($current_version) {
             'ssl' => ['verify_peer' => false, 'verify_peer_name' => false]
         ]);
 
-        $json_data = file_get_contents($update_json_url, false, $context);
-        if (!$json_data) {
-            throw new Exception('Не удалось получить данные обновления');
+        $update_info = file_get_contents($update_file_url, false, $context);
+        $update_data = json_decode($update_info, true);
+
+        if (!$update_data || !isset($update_data['LOGS_VERSION'], $update_data['UPDATE_URL'])) {
+            return ['update_available' => false, 'reason' => 'invalid_data'];
         }
 
-        $update_info = json_decode($json_data, true);
-        if (!isset($update_info['LOGS_VERSION'], $update_info['UPDATE_URL'])) {
-            throw new Exception('Некорректные данные обновления');
-        }
-
-        $new_version = $update_info['LOGS_VERSION'];
-        $update_url  = $update_info['UPDATE_URL'];
+        $new_version = $update_data['LOGS_VERSION'];
 
         if (version_compare($new_version, $current_version, '>')) {
-            $raw_file_url = convertToRawGitURL($update_url);
-            $new_file_content = file_get_contents($raw_file_url, false, $context);
+            $raw_url = str_replace('https://github.com/', 'https://raw.githubusercontent.com/', $update_data['UPDATE_URL']);
+            $raw_url = str_replace('/blob/', '/', $raw_url);
 
-            if (!$new_file_content) {
-                throw new Exception('Не удалось скачать новый файл');
+            $new_file_content = file_get_contents($raw_url, false, $context);
+            if ($new_file_content) {
+                $backup_dir = __DIR__ . '/backups/' . date('Y-m-d_H-i-s');
+                if (!is_dir($backup_dir)) {
+                    mkdir($backup_dir, 0777, true);
+                }
+
+                $backup_php = $backup_dir . '/backup.php';
+                copy(__FILE__, $backup_php);
+
+                foreach (glob(__DIR__ . '/*.txt') as $txt_file) {
+                    copy($txt_file, $backup_dir . '/' . basename($txt_file));
+                }
+
+                if (file_put_contents(__FILE__, $new_file_content) !== false) {
+                    file_put_contents(
+                        __DIR__ . '/update_log.txt',
+                        date('Y-m-d H:i:s') . " - Updated from $current_version to $new_version\n",
+                        FILE_APPEND
+                    );
+                    return [
+                        'update_available' => true,
+                        'updated' => true,
+                        'old_version' => $current_version,
+                        'new_version' => $new_version
+                    ];
+                }
             }
-
-            $backup_file = __DIR__ . '/backups//backup_' . date('Y-m-d_H-i-s') . '.php';
-            copy(__FILE__, $backup_file);
-
-            if (file_put_contents(__FILE__, $new_file_content) === false) {
-                throw new Exception('Не удалось записать новый файл');
-            }
-
-            return [
-                'update_available' => true,
-                'updated' => true,
-                'old_version' => $current_version,
-                'new_version' => $new_version
-            ];
         }
 
         return [
@@ -62,23 +80,18 @@ function autoUpdateFromGit($current_version) {
     } catch (Exception $e) {
         file_put_contents(
             __DIR__ . '/update_errors.txt',
-            date('Y-m-d H:i:s') . " - Ошибка обновления: " . $e->getMessage() . "\n",
+            date('Y-m-d H:i:s') . " - Update error: " . $e->getMessage() . "\n",
             FILE_APPEND
         );
         return ['update_available' => false, 'reason' => 'error', 'error' => $e->getMessage()];
     }
 }
 
-function convertToRawGitURL($url) {
-    $url = str_replace('https://github.com/', 'https://raw.githubusercontent.com/', $url);
-    $url = str_replace('/blob/', '/', $url);
-    return $url;
-}
-$result = autoUpdateFromGit($current_version);
+checkForUpdates($current_version);
 
 header('Content-Type: application/json; charset=utf-8');
 
-$allowed_ips = ['81.29.146.18', '2a0c:16c1:1:1500:225:c0ff:fe00:ef'];
+$allowed_ips = ['IP'];
 $client_ip = $_SERVER['REMOTE_ADDR'];
 
 if (!in_array($client_ip, $allowed_ips)) {
@@ -279,7 +292,6 @@ try {
             }
         }
 
-        // --- Время для тех, кто ещё в сети ---
         $now = time();
         foreach ($admins as $username => &$info) {
             if (!empty($info['current_login'])) {
