@@ -7,7 +7,7 @@ $user = $config['user'];
 $pass = $config['pass'];
 $dsn = "mysql:host=$host;dbname=$db;charset=utf8mb4";
 
-$current_version = '0.0.2';
+$current_version = '0.0.1';
 $lock_file = sys_get_temp_dir() . '/update_check.lock';
 
 function checkForUpdates($current_version) {
