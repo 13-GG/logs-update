@@ -6,7 +6,7 @@ $db   = $config['db'];
 $user = $config['user'];
 $pass = $config['pass'];
 
-$current_version = '0.0.0';
+$current_version = '0.0.1';
 $lock_file = sys_get_temp_dir() . '/update_check.lock';
 
 function checkForUpdates($current_version) {
